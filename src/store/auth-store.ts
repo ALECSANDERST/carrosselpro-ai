@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { User } from '@/types';
+import { createClient } from '@/lib/supabase';
 
 interface AuthState {
   user: User | null;
@@ -7,7 +8,8 @@ interface AuthState {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
+  loadSession: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -15,42 +17,89 @@ export const useAuthStore = create<AuthState>((set) => ({
   isAuthenticated: false,
   isLoading: false,
 
-  login: async (email: string, _password: string) => {
-    set({ isLoading: true });
-    // TODO: integrar com backend real (API/Firebase/Supabase)
-    await new Promise(resolve => setTimeout(resolve, 800));
-    const user: User = {
-      id: crypto.randomUUID(),
-      name: email.split('@')[0],
-      email,
-      createdAt: new Date(),
-    };
-    set({ user, isAuthenticated: true, isLoading: false });
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('carrosselpro_user', JSON.stringify(user));
+  loadSession: async () => {
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.user) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .single();
+
+      const user: User = {
+        id: session.user.id,
+        name: profile?.name || session.user.email?.split('@')[0] || '',
+        email: session.user.email || '',
+        avatarUrl: profile?.avatar_url,
+        createdAt: new Date(profile?.created_at || session.user.created_at),
+      };
+      set({ user, isAuthenticated: true });
     }
   },
 
-  register: async (name: string, email: string, _password: string) => {
+  login: async (email: string, password: string) => {
     set({ isLoading: true });
-    // TODO: integrar com backend real
-    await new Promise(resolve => setTimeout(resolve, 800));
-    const user: User = {
-      id: crypto.randomUUID(),
-      name,
+    const supabase = createClient();
+
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
-      createdAt: new Date(),
+      password,
+    });
+
+    if (error) {
+      set({ isLoading: false });
+      throw new Error(error.message);
+    }
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', data.user.id)
+      .single();
+
+    const user: User = {
+      id: data.user.id,
+      name: profile?.name || email.split('@')[0],
+      email,
+      avatarUrl: profile?.avatar_url,
+      createdAt: new Date(profile?.created_at || data.user.created_at),
     };
+
     set({ user, isAuthenticated: true, isLoading: false });
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('carrosselpro_user', JSON.stringify(user));
+  },
+
+  register: async (name: string, email: string, password: string) => {
+    set({ isLoading: true });
+    const supabase = createClient();
+
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { name },
+      },
+    });
+
+    if (error) {
+      set({ isLoading: false });
+      throw new Error(error.message);
+    }
+
+    if (data.user) {
+      const user: User = {
+        id: data.user.id,
+        name,
+        email,
+        createdAt: new Date(),
+      };
+      set({ user, isAuthenticated: true, isLoading: false });
     }
   },
 
-  logout: () => {
+  logout: async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
     set({ user: null, isAuthenticated: false });
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem('carrosselpro_user');
-    }
   },
 }));

@@ -54,14 +54,16 @@ export default function CriarPage() {
   });
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      const stored = typeof window !== 'undefined' ? localStorage.getItem('carrosselpro_user') : null;
-      if (!stored) {
-        router.push('/auth');
-        return;
+    const init = async () => {
+      if (!isAuthenticated) {
+        await useAuthStore.getState().loadSession();
+        if (!useAuthStore.getState().isAuthenticated) {
+          router.push('/auth');
+          return;
+        }
       }
-      useAuthStore.setState({ user: JSON.parse(stored), isAuthenticated: true });
-    }
+    };
+    init();
   }, [isAuthenticated, router]);
 
   const updateForm = (updates: Partial<CarouselFormData>) => {
@@ -77,11 +79,14 @@ export default function CriarPage() {
 
   const handleGenerate = async () => {
     setIsGenerating(true);
-    // Simula processamento (futuramente será chamada de IA)
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    const project = createProject(form);
-    setIsGenerating(false);
-    router.push(`/editor/${project.id}`);
+    try {
+      const project = await createProject(form);
+      router.push(`/editor/${project.id}`);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const canProceed = () => {

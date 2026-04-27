@@ -21,15 +21,17 @@ export default function DashboardPage() {
   const router = useRouter();
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      const stored = typeof window !== 'undefined' ? localStorage.getItem('carrosselpro_user') : null;
-      if (!stored) {
-        router.push('/auth');
-        return;
+    const init = async () => {
+      if (!isAuthenticated) {
+        await useAuthStore.getState().loadSession();
+        if (!useAuthStore.getState().isAuthenticated) {
+          router.push('/auth');
+          return;
+        }
       }
-      useAuthStore.setState({ user: JSON.parse(stored), isAuthenticated: true });
-    }
-    loadProjects();
+      await loadProjects();
+    };
+    init();
   }, [isAuthenticated, router, loadProjects]);
 
   const templateLabels: Record<string, string> = {
